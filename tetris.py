@@ -75,13 +75,13 @@ SHAPES = {
 }
 
 SHAPE_RGB_COLORS = {
-    'Z': (1000, 0, 0),       # 红
-    'L': (1000, 647, 0),     # 橙
-    'O': (1000, 1000, 0),    # 黄
-    'S': (0, 1000, 0),       # 绿
-    'I': (0, 1000, 1000),    # 青
-    'J': (0, 0, 1000),       # 蓝
-    'T': (1000, 0, 1000),    # 紫
+    'Z': '#FF5E62',  # 红
+    'L': '#FF9F43',  # 橙
+    'O': '#FEE140',  # 黄
+    'S': '#26DE81',  # 绿
+    'I': '#2ACBFF',  # 青
+    'J': '#4B7BEC',  # 蓝
+    'T': '#A55EEA',  # 紫
 }
 
 SHAPE_COLORS = {name: i + 1 for i, name in enumerate(SHAPE_RGB_COLORS)}
@@ -121,6 +121,14 @@ SRS_KICKS_I = {
 }
 
 SRS_KICKS_O = {}
+
+
+def hex_to_curses_rgb(hex_color):
+    """把 #RRGGBB 转换 curses 的格式"""
+    r = int(hex_color[1:3], 16) * 1000 // 255
+    g = int(hex_color[3:5], 16) * 1000 // 255
+    b = int(hex_color[5:7], 16) * 1000 // 255
+    return (r, g, b)
 
 
 def get_srs_kicks(shape_name, from_rot, to_rot):
@@ -240,7 +248,8 @@ class TetrisGame:
         curses.use_default_colors()
 
         if curses.can_change_color():
-            for i, (shape_name, (r, g, b)) in enumerate(SHAPE_RGB_COLORS.items(), 1):
+            for i, (shape_name, hex_color) in enumerate(SHAPE_RGB_COLORS.items(), 1):
+                r, g, b = hex_to_curses_rgb(hex_color)
                 curses.init_color(i, r, g, b)
 
         for i in range(1, 8):
