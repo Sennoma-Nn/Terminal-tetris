@@ -74,15 +74,17 @@ SHAPES = {
     ]
 }
 
-SHAPE_COLORS = {
-    'I': 1,  # 青色
-    'O': 2,  # 黄色
-    'T': 3,  # 紫色
-    'S': 4,  # 绿色
-    'Z': 5,  # 红色
-    'J': 6,  # 蓝色
-    'L': 7,  # 白色
+SHAPE_RGB_COLORS = {
+    'Z': (1000, 0, 0),       # 红
+    'L': (1000, 647, 0),     # 橙
+    'O': (1000, 1000, 0),    # 黄
+    'S': (0, 1000, 0),       # 绿
+    'I': (0, 1000, 1000),    # 青
+    'J': (0, 0, 1000),       # 蓝
+    'T': (1000, 0, 1000),    # 紫
 }
+
+SHAPE_COLORS = {name: i + 1 for i, name in enumerate(SHAPE_RGB_COLORS)}
 
 LINE_POINTS = {1: 100, 2: 300, 3: 500, 4: 800}
 
@@ -236,18 +238,15 @@ class TetrisGame:
     def _init_colors(self):
         curses.start_color()
         curses.use_default_colors()
-        colors = [
-            (curses.COLOR_CYAN, -1),
-            (curses.COLOR_YELLOW, -1),
-            (curses.COLOR_MAGENTA, -1),
-            (curses.COLOR_GREEN, -1),
-            (curses.COLOR_RED, -1),
-            (curses.COLOR_BLUE, -1),
-            (curses.COLOR_WHITE, -1),
-        ]
-        for i, (fg, bg) in enumerate(colors, 1):
-            curses.init_pair(i, fg, bg)
-        curses.init_pair(8, curses.COLOR_BLACK, -1)
+
+        if curses.can_change_color():
+            for i, (shape_name, (r, g, b)) in enumerate(SHAPE_RGB_COLORS.items(), 1):
+                curses.init_color(i, r, g, b)
+
+        for i in range(1, 8):
+            curses.init_pair(i, i, -1)
+
+        curses.init_pair(8, curses.COLOR_WHITE, -1)
         curses.init_pair(9, curses.COLOR_WHITE, -1)
 
     def _refill_bag(self):
@@ -551,7 +550,7 @@ class TetrisGame:
             self.stdscr.refresh()
             return
 
-        border_color = curses.color_pair(9)
+        border_color = curses.A_BOLD
         self._safe_addstr(self.disp_y, self.disp_x,
                            '╔' + '══' * BOARD_WIDTH + '╗', border_color)
         for y in range(BOARD_HEIGHT):
@@ -582,7 +581,7 @@ class TetrisGame:
         info_x = self.disp_x + 1 + BOARD_WIDTH * 2 + 3
         info_y = self.disp_y
 
-        self._safe_addstr(info_y, info_x, '  T E T R I S  ', curses.A_BOLD | curses.color_pair(9))
+        self._safe_addstr(info_y, info_x, '  T E T R I S  ', curses.A_BOLD)
 
         # Next piece
         self._safe_addstr(info_y + 2, info_x, 'Next:', curses.A_BOLD)
