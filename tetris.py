@@ -76,29 +76,57 @@ def parse_key_name(name):
     return 0
 
 
-def load_key_config():
-    """加载按键配置并且不存在的时候自动创建配置"""
-    os.makedirs(CONFIG_DIR, exist_ok=True)
+class Config:
+    def __init__(self):
+        self.path = CONFIG_FILE
+        os.makedirs(CONFIG_DIR, exist_ok=True)
 
-    if os.path.exists(CONFIG_FILE):
+    def create(self):
+        """创建空配置文件"""
+        if not os.path.exists(self.path):
+            try:
+                with open(self.path, 'w', encoding='utf-8') as f:
+                    json.dump({}, f)
+            except Exception:
+                pass
+
+    def write(self, key, value):
+        """写入配置项"""
+        self.create()
         try:
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-            if isinstance(raw, dict) and 'key_bindings' in raw:
-                raw = raw['key_bindings']
+            with open(self.path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
         except Exception:
-            raw = None
-    else:
-        raw = None
-
-    if raw is None:
-        raw = DEFAULT_KEY_CONFIG_JSON
+            data = {}
+        data[key] = value
         try:
-            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                json.dump({'key_bindings': DEFAULT_KEY_CONFIG_JSON}, f, indent=4)
-                f.write('\n')
+            with open(self.path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4)
         except Exception:
             pass
+
+    def read(self, key, default=None):
+        """读取配置项如果不存在时写入默认值"""
+        self.create()
+        try:
+            with open(self.path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        if key not in data:
+            data[key] = default
+            try:
+                with open(self.path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4)
+            except Exception:
+                pass
+        return data.get(key, default)
+
+
+def load_key_config():
+    """加载按键配置"""
+    config = Config()
+    raw = config.read('key_bindings', DEFAULT_KEY_CONFIG_JSON)
 
     key_config = {}
     for action, keys in raw.items():
@@ -114,7 +142,7 @@ def load_key_config():
     return key_config
 
 
-# ============ SRS 旋转系统 ============
+# ============ 方块配置 ============
 SHAPES = {
     'I': [
         [0,0,0,0],
