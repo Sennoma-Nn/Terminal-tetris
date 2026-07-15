@@ -590,13 +590,13 @@ class TetrisGame:
             if self._is_key(key, 'quit'):
                 self.quit = True
                 return True
-            elif key in (ord('r'), ord('R'), ord(' ')):
+            elif self._is_key(key, 'restart'):
                 self.__init__(self.stdscr, self.audio, self.key_config)
                 return True
             return False
 
         if self.paused:
-            if self._is_key(key, 'pause') or key == ord(' '):
+            if self._is_key(key, 'pause'):
                 self.paused = False
                 self.last_drop_time = time.time()
                 return True
