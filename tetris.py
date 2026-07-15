@@ -378,7 +378,7 @@ class TetrisGame:
         if self.next_piece_name is None:
             self.next_piece_name = self._get_next_piece_name()
 
-        spawn_x = self.board_width // 2 - len(SHAPES[self.next_piece_name][0]) // 2
+        spawn_x = (self.board_width - len(SHAPES[self.next_piece_name][0])) // 2
         self.current_piece = Piece(self.next_piece_name, spawn_x, 0)
         self.next_piece_name = self._get_next_piece_name()
         self.lock_timer = None
@@ -511,7 +511,7 @@ class TetrisGame:
             self._spawn_piece()
         else:
             self.held_piece_name, temp = current_name, self.held_piece_name
-            spawn_x = self.board_width // 2 - len(SHAPES[temp][0]) // 2
+            spawn_x = (self.board_width - len(SHAPES[temp][0])) // 2
             self.current_piece = Piece(temp, spawn_x, 0)
             self.lock_timer = None
             self.lock_resets = 0
