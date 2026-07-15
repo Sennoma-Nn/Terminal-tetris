@@ -209,14 +209,6 @@ BLOCK_CHAR = '██'
 EMPTY_CHAR = '  '
 GHOST_CHAR = '▒▒'
 
-GRAVITY_TABLE = [
-    0.01667,    0.021017,   0.026977,   0.035256,   0.04693,
-    0.06361,    0.0879,     0.1236,     0.1775,     0.2598,
-
-    0.388,      0.59,       0.92,       1.46,       2.36,
-    3.91,       6.61,       11.43,      20.23,      36.6,
-]
-
 LINES_PER_LEVEL = 10
 
 
@@ -575,8 +567,9 @@ class TetrisGame:
         return True
 
     def _get_gravity(self):
-        idx = min(self.level - 1, len(GRAVITY_TABLE) - 1)
-        return GRAVITY_TABLE[idx]
+        i = self.level - 1
+        time_per_cell = (0.8 - (i * 0.007)) ** i
+        return 1.0 / (60.0 * time_per_cell)
 
     def _screen_pos(self, board_y, board_x):
         return (self.disp_y + 1 + board_y, self.disp_x + 1 + board_x * 2)
