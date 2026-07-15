@@ -209,32 +209,39 @@ BLOCK_CHAR = '██'
 EMPTY_CHAR = '  '
 GHOST_CHAR = '▒▒'
 
-INITIAL_SPEED = 0.8
+GRAVITY_TABLE = [
+    0.01667,    0.021017,   0.026977,   0.035256,   0.04693,
+    0.06361,    0.0879,     0.1236,     0.1775,     0.2598,
+
+    0.388,      0.59,       0.92,       1.46,       2.36,
+    3.91,       6.61,       11.43,      20.23,      36.6,
+]
+
 LINES_PER_LEVEL = 10
 
 
 # ============ SRS Wall Kick 数据表 ============
 # 坐标: (x, y), 正x向右, 正y向上
 SRS_KICKS_JLSTZ = {
-    '0->R':  [(0, 0), (-1, 0), (-1, +1), (0, -2), (-1, -2)],
-    'R->0':  [(0, 0), (+1, 0), (+1, -1), (0, +2), (+1, +2)],
-    'R->2':  [(0, 0), (+1, 0), (+1, -1), (0, +2), (+1, +2)],
-    '2->R':  [(0, 0), (-1, 0), (-1, +1), (0, -2), (-1, -2)],
-    '2->L':  [(0, 0), (+1, 0), (+1, +1), (0, -2), (+1, -2)],
-    'L->2':  [(0, 0), (-1, 0), (-1, -1), (0, +2), (-1, +2)],
-    'L->0':  [(0, 0), (-1, 0), (-1, -1), (0, +2), (-1, +2)],
-    '0->L':  [(0, 0), (+1, 0), (+1, +1), (0, -2), (+1, -2)],
+    '0->R': [(0, 0), (-1, 0), (-1, +1), (0, -2), (-1, -2)],
+    'R->0': [(0, 0), (+1, 0), (+1, -1), (0, +2), (+1, +2)],
+    'R->2': [(0, 0), (+1, 0), (+1, -1), (0, +2), (+1, +2)],
+    '2->R': [(0, 0), (-1, 0), (-1, +1), (0, -2), (-1, -2)],
+    '2->L': [(0, 0), (+1, 0), (+1, +1), (0, -2), (+1, -2)],
+    'L->2': [(0, 0), (-1, 0), (-1, -1), (0, +2), (-1, +2)],
+    'L->0': [(0, 0), (-1, 0), (-1, -1), (0, +2), (-1, +2)],
+    '0->L': [(0, 0), (+1, 0), (+1, +1), (0, -2), (+1, -2)],
 }
 
 SRS_KICKS_I = {
-    '0->R':  [(0, 0), (-2, 0), (+1, 0), (-2, -1), (+1, +2)],
-    'R->0':  [(0, 0), (+2, 0), (-1, 0), (+2, +1), (-1, -2)],
-    'R->2':  [(0, 0), (-1, 0), (+2, 0), (-1, +2), (+2, -1)],
-    '2->R':  [(0, 0), (+1, 0), (-2, 0), (+1, -2), (-2, +1)],
-    '2->L':  [(0, 0), (+2, 0), (-1, 0), (+2, +1), (-1, -2)],
-    'L->2':  [(0, 0), (-2, 0), (+1, 0), (-2, -1), (+1, +2)],
-    'L->0':  [(0, 0), (+1, 0), (-2, 0), (+1, -2), (-2, +1)],
-    '0->L':  [(0, 0), (-1, 0), (+2, 0), (-1, +2), (+2, -1)],
+    '0->R': [(0, 0), (-2, 0), (+1, 0), (-2, -1), (+1, +2)],
+    'R->0': [(0, 0), (+2, 0), (-1, 0), (+2, +1), (-1, -2)],
+    'R->2': [(0, 0), (-1, 0), (+2, 0), (-1, +2), (+2, -1)],
+    '2->R': [(0, 0), (+1, 0), (-2, 0), (+1, -2), (-2, +1)],
+    '2->L': [(0, 0), (+2, 0), (-1, 0), (+2, +1), (-1, -2)],
+    'L->2': [(0, 0), (-2, 0), (+1, 0), (-2, -1), (+1, +2)],
+    'L->0': [(0, 0), (+1, 0), (-2, 0), (+1, -2), (-2, +1)],
+    '0->L': [(0, 0), (-1, 0), (+2, 0), (-1, +2), (+2, -1)],
 }
 
 SRS_KICKS_O = {}
@@ -386,9 +393,9 @@ class TetrisGame:
         self._refill_bag()
         self._spawn_piece()
 
-        self.last_drop_time = time.time()
-        self.lock_delay = 0.5
-        self.lock_timer = None
+        self.g_accum = 0.0
+        self.lock_frames = 30
+        self.lock_counter = None
         self.lock_resets = 0
         self.max_lock_resets = 15
 
@@ -427,7 +434,7 @@ class TetrisGame:
         spawn_x = (self.board_width - len(SHAPES[self.next_piece_name][0])) // 2
         self.current_piece = Piece(self.next_piece_name, spawn_x, 0)
         self.next_piece_name = self._get_next_piece_name()
-        self.lock_timer = None
+        self.lock_counter = None
         self.lock_resets = 0
         self.can_hold = True
 
@@ -486,8 +493,8 @@ class TetrisGame:
             self.current_piece.x += dx
             self.current_piece.y += dy
             self._update_ghost()
-            if self.lock_timer is not None and self.lock_resets < self.max_lock_resets:
-                self.lock_timer = time.time()
+            if self.lock_counter is not None and self.lock_resets < self.max_lock_resets:
+                self.lock_counter = 0
                 self.lock_resets += 1
             return True
         return False
@@ -517,8 +524,8 @@ class TetrisGame:
                 piece.shape = new_shape
                 piece.rotation = {'0': 0, 'R': 1, '2': 2, 'L': 3}[to_rot_name]
                 self._update_ghost()
-                if self.lock_timer is not None and self.lock_resets < self.max_lock_resets:
-                    self.lock_timer = time.time()
+                if self.lock_counter is not None and self.lock_resets < self.max_lock_resets:
+                    self.lock_counter = 0
                     self.lock_resets += 1
                 return True
             return False
@@ -530,8 +537,8 @@ class TetrisGame:
                 piece.x += dx
                 piece.y += -dy
                 self._update_ghost()
-                if self.lock_timer is not None and self.lock_resets < self.max_lock_resets:
-                    self.lock_timer = time.time()
+                if self.lock_counter is not None and self.lock_resets < self.max_lock_resets:
+                    self.lock_counter = 0
                     self.lock_resets += 1
                 return True
 
@@ -544,7 +551,7 @@ class TetrisGame:
         self.current_piece.y += drop
         self.score += drop * 2
         self._lock_piece()
-        self.last_drop_time = time.time()
+        self.g_accum = 0.0
 
     def _hold_piece(self):
         if not self.can_hold:
@@ -559,7 +566,7 @@ class TetrisGame:
             self.held_piece_name, temp = current_name, self.held_piece_name
             spawn_x = (self.board_width - len(SHAPES[temp][0])) // 2
             self.current_piece = Piece(temp, spawn_x, 0)
-            self.lock_timer = None
+            self.lock_counter = None
             self.lock_resets = 0
             if not self._is_valid_position(self.current_piece):
                 self.game_over = True
@@ -568,9 +575,9 @@ class TetrisGame:
         self.can_hold = False
         return True
 
-    def _get_drop_interval(self):
-        speed = INITIAL_SPEED * (0.9 ** (self.level - 1))
-        return max(0.05, speed)
+    def _get_gravity(self):
+        idx = min(self.level - 1, len(GRAVITY_TABLE) - 1)
+        return GRAVITY_TABLE[idx]
 
     def _screen_pos(self, board_y, board_x):
         return (self.disp_y + 1 + board_y, self.disp_x + 1 + board_x * 2)
@@ -598,7 +605,6 @@ class TetrisGame:
         if self.paused:
             if self._is_key(key, 'pause'):
                 self.paused = False
-                self.last_drop_time = time.time()
                 return True
             elif self._is_key(key, 'quit'):
                 self.quit = True
@@ -635,29 +641,34 @@ class TetrisGame:
         if self.game_over or self.paused or self.quit:
             return False
 
-        now = time.time()
         piece = self.current_piece
         redraw = False
 
         is_on_ground = not self._is_valid_position(piece, offset_y=1)
 
         if is_on_ground:
-            if self.lock_timer is None:
-                self.lock_timer = now
-            elif now - self.lock_timer >= self.lock_delay:
-                self._lock_piece()
-                self.last_drop_time = now
-                redraw = True
-        else:
-            if self.lock_timer is not None:
-                redraw = True
-            self.lock_timer = None
-            if now - self.last_drop_time >= self._get_drop_interval():
-                if self._is_valid_position(piece, offset_y=1):
-                    piece.y += 1
-                    self._update_ghost()
+            if self.lock_counter is None:
+                self.lock_counter = 0
+            else:
+                self.lock_counter += 1
+                if self.lock_counter >= self.lock_frames:
+                    self._lock_piece()
                     redraw = True
-                self.last_drop_time = now
+        else:
+            if self.lock_counter is not None:
+                redraw = True
+            self.lock_counter = None
+
+            self.g_accum += self._get_gravity()
+            drops = int(self.g_accum)
+            if drops > 0:
+                self.g_accum -= drops
+                for _ in range(drops):
+                    if self._is_valid_position(piece, offset_y=1):
+                        piece.y += 1
+                        redraw = True
+                    else:
+                        break
 
         return redraw
 
@@ -742,13 +753,24 @@ class TetrisGame:
             return
 
         border_color = curses.A_BOLD
+        # border_char = [
+        #     '╔', '═', '╗',
+        #     '║',      '║',
+        #     '╚', '═', '╝'
+        # ]
+        border_char = [
+            '▄', '▄', '▄',
+            '█',      '█',
+            '▀', '▀', '▀'
+        ]
+
         self._safe_addstr(self.disp_y, self.disp_x,
-                           '╔' + '══' * BOARD_WIDTH + '╗', border_color)
+                           border_char[0] + border_char[1] * 2 * BOARD_WIDTH + border_char[2], border_color)
         for y in range(BOARD_HEIGHT):
-            self._safe_addstr(self.disp_y + 1 + y, self.disp_x, '║', border_color)
-            self._safe_addstr(self.disp_y + 1 + y, self.disp_x + 1 + BOARD_WIDTH * 2, '║', border_color)
+            self._safe_addstr(self.disp_y + 1 + y, self.disp_x, border_char[3], border_color)
+            self._safe_addstr(self.disp_y + 1 + y, self.disp_x + 1 + BOARD_WIDTH * 2, border_char[4], border_color)
         self._safe_addstr(self.disp_y + 1 + BOARD_HEIGHT, self.disp_x,
-                           '╚' + '══' * BOARD_WIDTH + '╝', border_color)
+                           border_char[5] + border_char[6] * 2 * BOARD_WIDTH + border_char[7], border_color)
 
         for y in range(BOARD_HEIGHT):
             for x in range(BOARD_WIDTH):
@@ -757,11 +779,12 @@ class TetrisGame:
                     self._draw_block(sy, sx, self.board_colors[y][x])
 
         if self.current_piece and not self.game_over:
-            piece = self.current_piece
-            for x, y in piece.get_positions():
-                if 0 <= y < BOARD_HEIGHT and 0 <= x < BOARD_WIDTH and not self.board[y][x]:
-                    sy, sx = self._screen_pos(self.ghost_y + (y - piece.y), x)
-                    self._draw_block(sy, sx, piece.color, is_ghost=True)
+            if self._get_gravity() < 20:
+                piece = self.current_piece
+                for x, y in piece.get_positions():
+                    if 0 <= y < BOARD_HEIGHT and 0 <= x < BOARD_WIDTH and not self.board[y][x]:
+                        sy, sx = self._screen_pos(self.ghost_y + (y - piece.y), x)
+                        self._draw_block(sy, sx, piece.color, is_ghost=True)
 
         if self.current_piece and not self.game_over:
             for x, y in self.current_piece.get_positions():
@@ -769,32 +792,28 @@ class TetrisGame:
                     sy, sx = self._screen_pos(y, x)
                     self._draw_block(sy, sx, self.current_piece.color)
 
-        info_x = self.disp_x + 1 + BOARD_WIDTH * 2 + 3
+        info_x = self.disp_x + 1 + BOARD_WIDTH * 2 + 4
         info_y = self.disp_y
 
-        self._safe_addstr(info_y, info_x, '  T E T R I S  ', curses.A_BOLD)
-
         # Next piece
-        self._safe_addstr(info_y + 2, info_x, 'Next:', curses.A_BOLD)
+        self._safe_addstr(info_y + 1, info_x, 'Next:', curses.A_BOLD)
         self._draw_mini_piece(info_y + 3, info_x, self.next_piece_name, SHAPE_COLORS[self.next_piece_name])
 
         # Hold piece
-        self._safe_addstr(info_y + 8, info_x, 'Hold:', curses.A_BOLD)
+        self._safe_addstr(info_y + 6, info_x, 'Hold:', curses.A_BOLD)
         if self.held_piece_name:
-            self._draw_mini_piece(info_y + 9, info_x, self.held_piece_name, SHAPE_COLORS[self.held_piece_name])
-        else:
-            self._safe_addstr(info_y + 9, info_x, '---', curses.A_DIM)
+            self._draw_mini_piece(info_y + 8, info_x, self.held_piece_name, SHAPE_COLORS[self.held_piece_name])
 
-        self._safe_addstr(info_y + 14, info_x, f'Score: {self.score}', curses.A_BOLD)
-        self._safe_addstr(info_y + 15, info_x, f'Lines: {self.lines}', curses.A_BOLD)
-        self._safe_addstr(info_y + 16, info_x, f'Level: {self.level}', curses.A_BOLD)
+        game_info_y = info_y + 10
+        self._safe_addstr(info_y + game_info_y + 0, info_x, f'Score: {self.score}', curses.A_BOLD)
+        self._safe_addstr(info_y + game_info_y + 1, info_x, f'Lines: {self.lines}', curses.A_BOLD)
+        self._safe_addstr(info_y + game_info_y + 2, info_x, f'Level: {self.level}', curses.A_BOLD)
+        g = self._get_gravity()
+        self._safe_addstr(info_y + game_info_y + 3, info_x, f'Gravity: {g:.4f}', curses.A_DIM)
 
-        speed = self._get_drop_interval()
-        self._safe_addstr(info_y + 17, info_x, f'Speed: {speed:.2f}s', curses.A_DIM)
-
-        self._safe_addstr(info_y + 19, info_x, 'Controls:', curses.A_BOLD | curses.A_UNDERLINE)
+        self._safe_addstr(info_y + 16, info_x, 'Controls:', curses.A_BOLD | curses.A_UNDERLINE)
         for i, ctrl in enumerate(controls):
-            self._safe_addstr(info_y + 20 + i, info_x, ctrl, curses.A_DIM)
+            self._safe_addstr(info_y + 17 + i, info_x, ctrl, curses.A_DIM)
 
         if self.paused:
             msg = ' P A U S E D '
@@ -819,11 +838,16 @@ class TetrisGame:
             if self.audio:
                 self.audio.play()
             self.draw()
+            frame_time = 1.0 / 60
             while not self.quit:
-                need_draw = self.handle_input() or self.update()
-                if need_draw:
-                    self.draw()
-                time.sleep(0.05)
+                frame_start = time.time()
+                self.handle_input()
+                self.update()
+                self.draw()
+                elapsed = time.time() - frame_start
+                sleep_time = frame_time - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
         finally:
             if self.audio:
                 self.audio.stop()
@@ -846,7 +870,7 @@ def main():
         pass
     finally:
         audio.stop()
-    print("Thanks for playing Terminal Tetris!")
+    print("\n\x1b[41;30;1m Thanks for playing \n Terminal Tetris!   \x1b[0m\n")
 
 
 if __name__ == '__main__':
