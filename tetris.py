@@ -7,6 +7,7 @@ Terminal Tetris - 终端俄罗斯方块 (SRS Edition)
 """
 
 import curses
+import json
 import random
 import time
 import os
@@ -20,22 +21,138 @@ BOARD_HEIGHT = 20
 PREVIEW_WIDTH = 6
 PREVIEW_HEIGHT = 4
 
-# ============ 可配置键位 ============
-DEFAULT_KEY_CONFIG = {
-    'left':       [curses.KEY_LEFT, ord('a'), ord('A')],
-    'right':      [curses.KEY_RIGHT, ord('d'), ord('D')],
-    'soft_drop':  [curses.KEY_DOWN, ord('s'), ord('S')],
-    'rotate_cw':  [curses.KEY_UP, ord('w'), ord('W')],
-    'rotate_ccw': [ord('z'), ord('Z'), ord('j'), ord('J')],
-    'rotate_180': [ord('x'), ord('X'), ord('k'), ord('K')],
-    'hard_drop':  [ord(' ')],  # space
-    'hold':       [ord('c'), ord('C'), ord('h'), ord('H')],
-    'pause':      [ord('p'), ord('P')],
-    'quit':       [ord('q'), ord('Q'), 27],  # 27 = ESC
-    'restart':    [ord('r'), ord('R')],
+# ============ 按键 ============
+KEY_NAME_MAP = {
+    'LEFT':         curses.KEY_LEFT,
+    'RIGHT':        curses.KEY_RIGHT,
+    'UP':           curses.KEY_UP,
+    'DOWN':         curses.KEY_DOWN,
+    'HOME':         curses.KEY_HOME,
+    'END':          curses.KEY_END,
+    'PPAGE':        curses.KEY_PPAGE,
+    'NPAGE':        curses.KEY_NPAGE,
+    'ENTER':        10,
+    'TAB':          9,
+    'ESC':          27,
+    'BTAB':         curses.KEY_BTAB,
+    'SPACE':        ord(' '),
+    'ENTER':        10,
+    'TAB':          9,
+    'ESC':          27,
 }
 
-# ============ SRS 旋转系统 ============
+DEFAULT_KEY_CONFIG_JSON = {
+    'left':       ['KEY_LEFT'],
+    'right':      ['KEY_RIGHT'],
+    'soft_drop':  ['KEY_DOWN'],
+    'rotate_cw':  ['KEY_UP', 'x'],
+    'rotate_ccw': ['z'],
+    'rotate_180': ['a'],
+    'hard_drop':  ['SPACE'],
+    'hold':       ['c'],
+    'pause':      ['p'],
+    'quit':       ['q', 'ESC'],
+    'restart':    ['r'],
+}
+
+CONFIG_DIR = os.path.expanduser('~/.config/terminal-tetris')
+CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
+
+def parse_key_name(name):
+    """转换为 curses 键码"""
+    if name in KEY_NAME_MAP:
+        return [KEY_NAME_MAP[name]]
+    if len(name) == 1:
+        code = ord(name)
+        if name.isalpha():
+            lower = ord(name.lower())
+            upper = ord(name.upper())
+            return [lower, upper]
+        return [code]
+
+    try:
+        return [getattr(curses, name)]
+    except AttributeError:
+        pass
+
+    if len(name) > 0:
+        return [ord(name[0])]
+
+    return [0]
+
+
+class Config:
+    def __init__(self):
+        self.path = CONFIG_FILE
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+
+    def create(self):
+        """创建空配置文件"""
+        if not os.path.exists(self.path):
+            try:
+                with open(self.path, 'w', encoding='utf-8') as f:
+                    json.dump({}, f)
+            except Exception:
+                pass
+
+    def write(self, key, value):
+        """写入配置项"""
+        self.create()
+        try:
+            with open(self.path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        data[key] = value
+        try:
+            with open(self.path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4)
+        except Exception:
+            pass
+
+    def read(self, key, default=None):
+        """读取配置项如果不存在时写入默认值"""
+        self.create()
+        try:
+            with open(self.path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        if key not in data:
+            data[key] = default
+            try:
+                with open(self.path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4)
+            except Exception:
+                pass
+        return data.get(key, default)
+
+
+def load_key_config():
+    """加载按键配置"""
+    config = Config()
+    raw = config.read('key_bindings', DEFAULT_KEY_CONFIG_JSON)
+
+    key_config = {}
+    for action, keys in raw.items():
+        if not isinstance(keys, list):
+            keys = [keys]
+        result = []
+        for k in keys:
+            result.extend(parse_key_name(k))
+        key_config[action] = result
+
+    for action, default_keys in DEFAULT_KEY_CONFIG_JSON.items():
+        if action not in key_config or not key_config[action]:
+            result = []
+            for k in default_keys:
+                result.extend(parse_key_name(k))
+            key_config[action] = result
+
+    return key_config
+
+
+# ============ 方块配置 ============
 SHAPES = {
     'I': [
         [0,0,0,0],
@@ -141,6 +258,42 @@ def get_srs_kicks(shape_name, from_rot, to_rot):
         return SRS_KICKS_JLSTZ.get(key, [])
 
 
+def key_code_to_display(key_code):
+    """将键码转换为可读的显示名称"""
+    for name, code in KEY_NAME_MAP.items():
+        if code == key_code:
+            if name == 'SPACE':
+                return '⌴'
+            elif name == 'ESC':
+                return '⎋'
+            elif name == 'ENTER':
+                return '↩'
+            elif name == 'TAB':
+                return '⇥'
+            elif name == 'BTAB':
+                return '⇤'
+            elif name == 'KEY_LEFT':
+                return '←'
+            elif name == 'KEY_RIGHT':
+                return '→'
+            elif name == 'KEY_UP':
+                return '↑'
+            elif name == 'KEY_DOWN':
+                return '↓'
+            elif name == 'KEY_HOME':
+                return 'Home'
+            elif name == 'KEY_END':
+                return 'End'
+            elif name == 'KEY_PPAGE':
+                return 'PgUp'
+            elif name == 'KEY_NPAGE':
+                return 'PgDn'
+            return name
+    if 32 <= key_code <= 126:
+        return chr(key_code).upper()
+    return f'0x{key_code:02x}'
+
+
 class AudioPlayer:
     def __init__(self, filepath="./tetris.mp3"):
         self.filepath = os.path.expanduser(filepath)
@@ -210,7 +363,7 @@ class TetrisGame:
     def __init__(self, stdscr, audio=None, key_config=None):
         self.stdscr = stdscr
         self.audio = audio
-        self.key_config = key_config or copy.deepcopy(DEFAULT_KEY_CONFIG)
+        self.key_config = key_config
         self.board_width = BOARD_WIDTH
         self.board_height = BOARD_HEIGHT
         self.board = [[0] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)]
@@ -271,7 +424,7 @@ class TetrisGame:
         if self.next_piece_name is None:
             self.next_piece_name = self._get_next_piece_name()
 
-        spawn_x = self.board_width // 2 - len(SHAPES[self.next_piece_name][0]) // 2
+        spawn_x = (self.board_width - len(SHAPES[self.next_piece_name][0])) // 2
         self.current_piece = Piece(self.next_piece_name, spawn_x, 0)
         self.next_piece_name = self._get_next_piece_name()
         self.lock_timer = None
@@ -404,7 +557,7 @@ class TetrisGame:
             self._spawn_piece()
         else:
             self.held_piece_name, temp = current_name, self.held_piece_name
-            spawn_x = self.board_width // 2 - len(SHAPES[temp][0]) // 2
+            spawn_x = (self.board_width - len(SHAPES[temp][0])) // 2
             self.current_piece = Piece(temp, spawn_x, 0)
             self.lock_timer = None
             self.lock_resets = 0
@@ -437,13 +590,13 @@ class TetrisGame:
             if self._is_key(key, 'quit'):
                 self.quit = True
                 return True
-            elif key in (ord('r'), ord('R'), ord(' ')):
+            elif self._is_key(key, 'restart'):
                 self.__init__(self.stdscr, self.audio, self.key_config)
                 return True
             return False
 
         if self.paused:
-            if self._is_key(key, 'pause') or key == ord(' '):
+            if self._is_key(key, 'pause'):
                 self.paused = False
                 self.last_drop_time = time.time()
                 return True
@@ -535,18 +688,47 @@ class TetrisGame:
         except curses.error:
             pass
 
+    def _get_controls_text(self):
+        """生成 Controls 帮助文字"""
+        def keys_display(action):
+            keys = self.key_config.get(action, [])
+            if not keys:
+                return '?'
+            seen = set()
+            unique = []
+            for k in keys:
+                d = key_code_to_display(k)
+                if d not in seen:
+                    seen.add(d)
+                    unique.append(d)
+            return '/'.join(unique)
+
+        left = keys_display('left')
+        right = keys_display('right')
+        soft = keys_display('soft_drop')
+        cw = keys_display('rotate_cw')
+        ccw = keys_display('rotate_ccw')
+        r180 = keys_display('rotate_180')
+        hard = keys_display('hard_drop')
+        hold = keys_display('hold')
+        pause = keys_display('pause')
+        quit_key = keys_display('quit')
+
+        return [
+            f'{left}: Left\t{right}: Right',
+            f'{soft}: Soft\t{cw}: Rot CW',
+            f'{ccw}: Rot CCW\t{r180}: 180',
+            f'{hard}: Hard\t{hold}: Hold',
+            f'{pause}: Pause\t{quit_key}: Quit'
+        ]
+
     def draw(self):
         self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
 
         # 动态计算最小高度需求
-        controls = [
-            'A/< : Left   D/> : Right',
-            'S/v : Soft   W/^ : Rot CW',
-            'Z/J : Rot CCW  X/K : 180',
-            'Space: Hard   C/H : Hold',
-            'P: Pause      Q/ESC: Quit'
-        ]
+        controls = self._get_controls_text()
+
         # info_y=1, controls 从 info_y+13 开始 (Next+Hold+Score 占 12 行)
         # 最后一行在 1 + 13 + len(controls) = 14 + 5 = 19
         # 加上 board 底部在 1 + 1 + 20 = 22, 所以 min_height = max(22, 19) + 2 = 24
@@ -649,12 +831,12 @@ class TetrisGame:
 
 def main():
     audio = AudioPlayer("./tetris.mp3")
+    key_config = load_key_config()
     def wrapper(stdscr):
         curses.curs_set(0)
         stdscr.keypad(True)
         curses.noecho()
 
-        key_config = copy.deepcopy(DEFAULT_KEY_CONFIG)
         game = TetrisGame(stdscr, audio, key_config)
         game.run()
 
