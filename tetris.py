@@ -45,14 +45,14 @@ DEFAULT_KEY_CONFIG_JSON = {
     'left':       ['KEY_LEFT'],
     'right':      ['KEY_RIGHT'],
     'soft_drop':  ['KEY_DOWN'],
-    'rotate_cw':  ['KEY_UP', 'x', 'X'],
-    'rotate_ccw': ['z', 'Z'],
-    'rotate_180': ['a', 'A'],
+    'rotate_cw':  ['KEY_UP', 'x'],
+    'rotate_ccw': ['z'],
+    'rotate_180': ['a'],
     'hard_drop':  ['SPACE'],
-    'hold':       ['c', 'C'],
-    'pause':      ['p', 'P'],
-    'quit':       ['q', 'Q', 'ESC'],
-    'restart':    ['r', 'R'],
+    'hold':       ['c'],
+    'pause':      ['p'],
+    'quit':       ['q', 'ESC'],
+    'restart':    ['r'],
 }
 
 CONFIG_DIR = os.path.expanduser('~/.config/terminal-tetris')
@@ -61,19 +61,24 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 def parse_key_name(name):
     """转换为 curses 键码"""
     if name in KEY_NAME_MAP:
-        return KEY_NAME_MAP[name]
+        return [KEY_NAME_MAP[name]]
     if len(name) == 1:
-        return ord(name)
+        code = ord(name)
+        if name.isalpha():
+            lower = ord(name.lower())
+            upper = ord(name.upper())
+            return [lower, upper]
+        return [code]
 
     try:
-        return getattr(curses, name)
+        return [getattr(curses, name)]
     except AttributeError:
         pass
 
     if len(name) > 0:
-        return ord(name[0])
+        return [ord(name[0])]
 
-    return 0
+    return [0]
 
 
 class Config:
@@ -130,14 +135,19 @@ def load_key_config():
 
     key_config = {}
     for action, keys in raw.items():
-        if isinstance(keys, list):
-            key_config[action] = [parse_key_name(k) for k in keys]
-        else:
-            key_config[action] = [parse_key_name(keys)]
+        if not isinstance(keys, list):
+            keys = [keys]
+        result = []
+        for k in keys:
+            result.extend(parse_key_name(k))
+        key_config[action] = result
 
     for action, default_keys in DEFAULT_KEY_CONFIG_JSON.items():
         if action not in key_config or not key_config[action]:
-            key_config[action] = [parse_key_name(k) for k in default_keys]
+            result = []
+            for k in default_keys:
+                result.extend(parse_key_name(k))
+            key_config[action] = result
 
     return key_config
 
@@ -246,6 +256,42 @@ def get_srs_kicks(shape_name, from_rot, to_rot):
         return []
     else:
         return SRS_KICKS_JLSTZ.get(key, [])
+
+
+def key_code_to_display(key_code):
+    """将键码转换为可读的显示名称"""
+    for name, code in KEY_NAME_MAP.items():
+        if code == key_code:
+            if name == 'SPACE':
+                return '⌴'
+            elif name == 'ESC':
+                return '⎋'
+            elif name == 'ENTER':
+                return '↩'
+            elif name == 'TAB':
+                return '⇥'
+            elif name == 'BTAB':
+                return '⇤'
+            elif name == 'KEY_LEFT':
+                return '←'
+            elif name == 'KEY_RIGHT':
+                return '→'
+            elif name == 'KEY_UP':
+                return '↑'
+            elif name == 'KEY_DOWN':
+                return '↓'
+            elif name == 'KEY_HOME':
+                return 'Home'
+            elif name == 'KEY_END':
+                return 'End'
+            elif name == 'KEY_PPAGE':
+                return 'PgUp'
+            elif name == 'KEY_NPAGE':
+                return 'PgDn'
+            return name
+    if 32 <= key_code <= 126:
+        return chr(key_code).upper()
+    return f'0x{key_code:02x}'
 
 
 class AudioPlayer:
@@ -642,18 +688,47 @@ class TetrisGame:
         except curses.error:
             pass
 
+    def _get_controls_text(self):
+        """生成 Controls 帮助文字"""
+        def keys_display(action):
+            keys = self.key_config.get(action, [])
+            if not keys:
+                return '?'
+            seen = set()
+            unique = []
+            for k in keys:
+                d = key_code_to_display(k)
+                if d not in seen:
+                    seen.add(d)
+                    unique.append(d)
+            return '/'.join(unique)
+
+        left = keys_display('left')
+        right = keys_display('right')
+        soft = keys_display('soft_drop')
+        cw = keys_display('rotate_cw')
+        ccw = keys_display('rotate_ccw')
+        r180 = keys_display('rotate_180')
+        hard = keys_display('hard_drop')
+        hold = keys_display('hold')
+        pause = keys_display('pause')
+        quit_key = keys_display('quit')
+
+        return [
+            f'{left}: Left\t{right}: Right',
+            f'{soft}: Soft\t{cw}: Rot CW',
+            f'{ccw}: Rot CCW\t{r180}: 180',
+            f'{hard}: Hard\t{hold}: Hold',
+            f'{pause}: Pause\t{quit_key}: Quit'
+        ]
+
     def draw(self):
         self.stdscr.clear()
         height, width = self.stdscr.getmaxyx()
 
         # 动态计算最小高度需求
-        controls = [
-            'A/< : Left   D/> : Right',
-            'S/v : Soft   W/^ : Rot CW',
-            'Z/J : Rot CCW  X/K : 180',
-            'Space: Hard   C/H : Hold',
-            'P: Pause      Q/ESC: Quit'
-        ]
+        controls = self._get_controls_text()
+
         # info_y=1, controls 从 info_y+13 开始 (Next+Hold+Score 占 12 行)
         # 最后一行在 1 + 13 + len(controls) = 14 + 5 = 19
         # 加上 board 底部在 1 + 1 + 20 = 22, 所以 min_height = max(22, 19) + 2 = 24
