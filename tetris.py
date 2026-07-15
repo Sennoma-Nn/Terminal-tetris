@@ -7,6 +7,7 @@ Terminal Tetris - 终端俄罗斯方块 (SRS Edition)
 """
 
 import curses
+import json
 import random
 import time
 import os
@@ -20,20 +21,98 @@ BOARD_HEIGHT = 20
 PREVIEW_WIDTH = 6
 PREVIEW_HEIGHT = 4
 
-# ============ 可配置键位 ============
-DEFAULT_KEY_CONFIG = {
-    'left':       [curses.KEY_LEFT, ord('a'), ord('A')],
-    'right':      [curses.KEY_RIGHT, ord('d'), ord('D')],
-    'soft_drop':  [curses.KEY_DOWN, ord('s'), ord('S')],
-    'rotate_cw':  [curses.KEY_UP, ord('w'), ord('W')],
-    'rotate_ccw': [ord('z'), ord('Z'), ord('j'), ord('J')],
-    'rotate_180': [ord('x'), ord('X'), ord('k'), ord('K')],
-    'hard_drop':  [ord(' ')],  # space
-    'hold':       [ord('c'), ord('C'), ord('h'), ord('H')],
-    'pause':      [ord('p'), ord('P')],
-    'quit':       [ord('q'), ord('Q'), 27],  # 27 = ESC
-    'restart':    [ord('r'), ord('R')],
+# ============ 按键 ============
+KEY_NAME_MAP = {
+    'LEFT':         curses.KEY_LEFT,
+    'RIGHT':        curses.KEY_RIGHT,
+    'UP':           curses.KEY_UP,
+    'DOWN':         curses.KEY_DOWN,
+    'HOME':         curses.KEY_HOME,
+    'END':          curses.KEY_END,
+    'PPAGE':        curses.KEY_PPAGE,
+    'NPAGE':        curses.KEY_NPAGE,
+    'ENTER':        10,
+    'TAB':          9,
+    'ESC':          27,
+    'BTAB':         curses.KEY_BTAB,
+    'SPACE':        ord(' '),
+    'ENTER':        10,
+    'TAB':          9,
+    'ESC':          27,
 }
+
+DEFAULT_KEY_CONFIG_JSON = {
+    'left':       ['KEY_LEFT'],
+    'right':      ['KEY_RIGHT'],
+    'soft_drop':  ['KEY_DOWN'],
+    'rotate_cw':  ['KEY_UP', 'x', 'X'],
+    'rotate_ccw': ['z', 'Z'],
+    'rotate_180': ['a', 'A'],
+    'hard_drop':  ['SPACE'],
+    'hold':       ['c', 'C'],
+    'pause':      ['p', 'P'],
+    'quit':       ['q', 'Q', 'ESC'],
+    'restart':    ['r', 'R'],
+}
+
+CONFIG_DIR = os.path.expanduser('~/.config/terminal-tetris')
+CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
+
+def parse_key_name(name):
+    """转换为 curses 键码"""
+    if name in KEY_NAME_MAP:
+        return KEY_NAME_MAP[name]
+    if len(name) == 1:
+        return ord(name)
+
+    try:
+        return getattr(curses, name)
+    except AttributeError:
+        pass
+
+    if len(name) > 0:
+        return ord(name[0])
+
+    return 0
+
+
+def load_key_config():
+    """加载按键配置并且不存在的时候自动创建配置"""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            if isinstance(raw, dict) and 'key_bindings' in raw:
+                raw = raw['key_bindings']
+        except Exception:
+            raw = None
+    else:
+        raw = None
+
+    if raw is None:
+        raw = DEFAULT_KEY_CONFIG_JSON
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump({'key_bindings': DEFAULT_KEY_CONFIG_JSON}, f, indent=4)
+                f.write('\n')
+        except Exception:
+            pass
+
+    key_config = {}
+    for action, keys in raw.items():
+        if isinstance(keys, list):
+            key_config[action] = [parse_key_name(k) for k in keys]
+        else:
+            key_config[action] = [parse_key_name(keys)]
+
+    for action, default_keys in DEFAULT_KEY_CONFIG_JSON.items():
+        if action not in key_config or not key_config[action]:
+            key_config[action] = [parse_key_name(k) for k in default_keys]
+
+    return key_config
+
 
 # ============ SRS 旋转系统 ============
 SHAPES = {
@@ -210,7 +289,7 @@ class TetrisGame:
     def __init__(self, stdscr, audio=None, key_config=None):
         self.stdscr = stdscr
         self.audio = audio
-        self.key_config = key_config or copy.deepcopy(DEFAULT_KEY_CONFIG)
+        self.key_config = key_config
         self.board_width = BOARD_WIDTH
         self.board_height = BOARD_HEIGHT
         self.board = [[0] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)]
@@ -649,12 +728,12 @@ class TetrisGame:
 
 def main():
     audio = AudioPlayer("./tetris.mp3")
+    key_config = load_key_config()
     def wrapper(stdscr):
         curses.curs_set(0)
         stdscr.keypad(True)
         curses.noecho()
 
-        key_config = copy.deepcopy(DEFAULT_KEY_CONFIG)
         game = TetrisGame(stdscr, audio, key_config)
         game.run()
 
