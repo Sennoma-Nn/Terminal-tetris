@@ -211,6 +211,24 @@ GHOST_CHAR = '▒▒'
 
 LINES_PER_LEVEL = 10
 
+# ============ 边框 ============
+BORDER_STYLES = {
+    'block': [
+        '▄', '▄', '▄',
+        '█',      '█',
+        '▀', '▀', '▀'
+    ],
+    'double_line': [
+        '╔', '═', '╗',
+        '║',      '║',
+        '╚', '═', '╝'
+    ],
+}
+
+DEFAULT_STYLE = {
+    'border': 'block',
+}
+
 
 # ============ SRS Wall Kick 数据表 ============
 # 坐标: (x, y), 正x向右, 正y向上
@@ -393,6 +411,9 @@ class TetrisGame:
 
         self.stdscr.nodelay(True)
         self._init_colors()
+
+        config = Config()
+        self.style = config.read('style', DEFAULT_STYLE)
 
     def _init_colors(self):
         curses.start_color()
@@ -745,16 +766,8 @@ class TetrisGame:
             return
 
         border_color = curses.A_BOLD
-        # border_char = [
-        #     '╔', '═', '╗',
-        #     '║',      '║',
-        #     '╚', '═', '╝'
-        # ]
-        border_char = [
-            '▄', '▄', '▄',
-            '█',      '█',
-            '▀', '▀', '▀'
-        ]
+        border_style = self.style.get('border', 'block')
+        border_char = BORDER_STYLES.get(border_style, BORDER_STYLES['block'])
 
         self._safe_addstr(self.disp_y, self.disp_x,
                            border_char[0] + border_char[1] * 2 * BOARD_WIDTH + border_char[2], border_color)
@@ -803,9 +816,8 @@ class TetrisGame:
         g = self._get_gravity()
         self._safe_addstr(info_y + game_info_y + 3, info_x, f'Gravity: {g:.4f}', curses.A_DIM)
 
-        self._safe_addstr(info_y + 16, info_x, 'Controls:', curses.A_BOLD | curses.A_UNDERLINE)
         for i, ctrl in enumerate(controls):
-            self._safe_addstr(info_y + 17 + i, info_x, ctrl, curses.A_DIM)
+            self._safe_addstr(info_y + 16 + i, info_x, ctrl, curses.A_DIM)
 
         if self.paused:
             msg = ' P A U S E D '
