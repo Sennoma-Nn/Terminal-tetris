@@ -401,7 +401,6 @@ class TetrisGame:
 
         self.stdscr.nodelay(True)
         self._init_colors()
-        self.ghost_y = 0
 
     def _init_colors(self):
         curses.start_color()
