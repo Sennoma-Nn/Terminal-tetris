@@ -588,6 +588,9 @@ class TetrisGame:
         return True
 
     def _get_gravity(self):
+        if self.level >= 19:
+            return 20.00
+
         i = self.level - 1
         time_per_cell = (0.8 - (i * 0.007)) ** i
         return 1.0 / (60.0 * time_per_cell)
