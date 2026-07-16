@@ -815,8 +815,10 @@ class TetrisGame:
         self._safe_addstr(game_info_y + 0, info_x, f'Score: {self.score}', bold=True)
         self._safe_addstr(game_info_y + 1, info_x, f'Lines: {self.lines}', bold=True)
         self._safe_addstr(game_info_y + 2, info_x, f'Level: {self.level}', bold=True)
-        remaining = self._get_max_lock_resets() - self.lock_resets
-        self._safe_addstr(game_info_y + 3, info_x, f'Lock Resets: {'◆' * remaining}', dim=True)
+        lr_max = self._get_max_lock_resets()
+        lr = lr_max - self.lock_resets
+        self._safe_addstr(game_info_y + 3, info_x, f'Lock Resets: {'◇' * lr_max}', dim=True)
+        self._safe_addstr(game_info_y + 3, info_x, f'Lock Resets: {'◆' * lr}', bold=True)
 
         for i, ctrl in enumerate(controls):
             self._safe_addstr(info_y + 16 + i, info_x, ctrl, dim=True)
