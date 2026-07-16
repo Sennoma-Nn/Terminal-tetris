@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Terminal Tetris - 终端俄罗斯方块 (SRS Edition)
-使用 Python 内置 curses 库，无需额外依赖
-支持背景音乐播放（依赖 mpv）
-"""
 
 import curses
 import json
@@ -42,17 +37,17 @@ KEY_NAME_MAP = {
 }
 
 DEFAULT_KEY_CONFIG_JSON = {
-    'left':       ['KEY_LEFT'],
-    'right':      ['KEY_RIGHT'],
-    'soft_drop':  ['KEY_DOWN'],
-    'rotate_cw':  ['KEY_UP', 'x'],
-    'rotate_ccw': ['z'],
-    'rotate_180': ['a'],
-    'hard_drop':  ['SPACE'],
-    'hold':       ['c'],
-    'pause':      ['p'],
-    'quit':       ['q', 'ESC'],
-    'restart':    ['r'],
+    'left':         ['KEY_LEFT'],
+    'right':        ['KEY_RIGHT'],
+    'soft_drop':    ['KEY_DOWN'],
+    'rotate_cw':    ['KEY_UP', 'x'],
+    'rotate_ccw':   ['z'],
+    'rotate_180':   ['a'],
+    'hard_drop':    ['SPACE'],
+    'hold':         ['c'],
+    'pause':        ['p'],
+    'quit':         ['q', 'ESC'],
+    'restart':      ['r'],
 }
 
 CONFIG_DIR = os.path.expanduser('~/.config/terminal-tetris')
@@ -744,7 +739,7 @@ class TetrisGame:
         return [
             f'{left}: Left\t{right}: Right',
             f'{soft}: Soft\t{cw}: Rot CW',
-            f'{ccw}: Rot CCW\t{r180}: 180',
+            f'{ccw}: Rot CCW\t{r180}: Rot 180',
             f'{hard}: Hard\t{hold}: Hold',
             f'{pause}: Pause\t{quit_key}: Quit'
         ]
