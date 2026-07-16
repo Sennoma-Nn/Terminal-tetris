@@ -9,14 +9,13 @@ import os
 import shutil
 import subprocess
 import copy
+import sys
 
-# ============ 游戏常量 ============
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
 PREVIEW_WIDTH = 6
 PREVIEW_HEIGHT = 4
 
-# ============ 按键 ============
 KEY_NAME_MAP = {
     'LEFT':         curses.KEY_LEFT,
     'RIGHT':        curses.KEY_RIGHT,
@@ -147,7 +146,6 @@ def load_key_config():
     return key_config
 
 
-# ============ 方块配置 ============
 SHAPES = {
     'I': [
         [0,0,0,0],
@@ -206,7 +204,6 @@ GHOST_CHAR = '▒▒'
 
 LINES_PER_LEVEL = 10
 
-# ============ 边框 ============
 BORDER_STYLES = {
     'block': [
         '▄', '▄', '▄',
@@ -225,8 +222,6 @@ DEFAULT_STYLE = {
 }
 
 
-# ============ SRS Wall Kick 数据表 ============
-# 坐标: (x, y), 正x向右, 正y向上
 SRS_KICKS_JLSTZ = {
     '0->R': [(0, 0), (-1, 0), (-1, +1), (0, -2), (-1, -2)],
     'R->0': [(0, 0), (+1, 0), (+1, -1), (0, +2), (+1, +2)],
@@ -252,12 +247,24 @@ SRS_KICKS_I = {
 SRS_KICKS_O = {}
 
 
-def hex_to_curses_rgb(hex_color):
-    """把 #RRGGBB 转换 curses 的格式"""
-    r = int(hex_color[1:3], 16) * 1000 // 255
-    g = int(hex_color[3:5], 16) * 1000 // 255
-    b = int(hex_color[5:7], 16) * 1000 // 255
+def hex_to_rgb(hex_color):
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
     return (r, g, b)
+
+
+class Ansi:
+    fg = lambda self, r, g, b: f'\x1b[38;2;{r};{g};{b}m'
+    bg = lambda self, r, g, b: f'\x1b[48;2;{r};{g};{b}m'
+    reset = lambda self: '\x1b[0m'
+    bold = lambda self: '\x1b[1m'
+    dim = lambda self: '\x1b[2m'
+    reverse = lambda self: '\x1b[7m'
+    cursor = lambda self, y, x: f'\x1b[{y};{x}H'
+    clear_screen = lambda self: '\x1b[2J'
+    hide_cursor = lambda self: '\x1b[?25l'
+    show_cursor = lambda self: '\x1b[?25h'
 
 
 def get_srs_kicks(shape_name, from_rot, to_rot):
@@ -405,25 +412,9 @@ class TetrisGame:
         self.max_lock_resets = 15
 
         self.stdscr.nodelay(True)
-        self._init_colors()
 
         config = Config()
         self.style = config.read('style', DEFAULT_STYLE)
-
-    def _init_colors(self):
-        curses.start_color()
-        curses.use_default_colors()
-
-        if curses.can_change_color():
-            for i, (shape_name, hex_color) in enumerate(SHAPE_RGB_COLORS.items(), 1):
-                r, g, b = hex_to_curses_rgb(hex_color)
-                curses.init_color(i, r, g, b)
-
-        for i in range(1, 8):
-            curses.init_pair(i, i, -1)
-
-        curses.init_pair(8, curses.COLOR_WHITE, -1)
-        curses.init_pair(9, curses.COLOR_WHITE, -1)
 
     def _refill_bag(self):
         self.bag = list(SHAPES.keys())
@@ -683,35 +674,47 @@ class TetrisGame:
 
         return redraw
 
-    def _draw_block(self, y, x, color_pair, is_ghost=False):
-        try:
-            if is_ghost:
-                self.stdscr.addstr(y, x, GHOST_CHAR, curses.color_pair(color_pair) | curses.A_DIM)
-            else:
-                self.stdscr.addstr(y, x, BLOCK_CHAR, curses.color_pair(color_pair) | curses.A_BOLD)
-        except curses.error:
-            pass
+    def _get_shape_rgb(self, shape_name):
+        return hex_to_rgb(SHAPE_RGB_COLORS[shape_name])
 
-    def _draw_mini_piece(self, start_y, start_x, shape_name, color):
+    def _get_color_by_index(self, color_index):
+        name_index = {v: k for k, v in SHAPE_COLORS.items()}
+        shape_name = name_index.get(color_index)
+        if shape_name:
+            return self._get_shape_rgb(shape_name)
+        return (200, 200, 200)
+
+    def _draw_block(self, y, x, color_index, is_ghost=False):
+        r, g, b = self._get_color_by_index(color_index)
+        a = Ansi()
+        if is_ghost:
+            sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{a.fg(r, g, b)}{a.dim()}{GHOST_CHAR}{a.reset()}')
+        else:
+            sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{a.fg(r, g, b)}{a.bold()}{BLOCK_CHAR}{a.reset()}')
+
+    def _draw_mini_piece(self, start_y, start_x, shape_name, color_index):
+        r, g, b = self._get_shape_rgb(shape_name)
+        a = Ansi()
         shape = SHAPES[shape_name]
         for dy, row in enumerate(shape):
             for dx, cell in enumerate(row):
                 if cell:
-                    try:
-                        self.stdscr.addstr(start_y + dy, start_x + dx * 2, BLOCK_CHAR,
-                                         curses.color_pair(color) | curses.A_BOLD)
-                    except:
-                        pass
+                    sy = start_y + dy + 1
+                    sx = start_x + dx * 2 + 1
+                    sys.stdout.write(f'{a.cursor(sy, sx)}{a.fg(r, g, b)}{a.bold()}{BLOCK_CHAR}{a.reset()}')
 
-    def _safe_addstr(self, y, x, text, attr=0):
-        """安全的 addstr，越界时静默忽略"""
-        try:
-            self.stdscr.addstr(y, x, text, attr)
-        except curses.error:
-            pass
+    def _safe_addstr(self, y, x, text, bold=False, dim=False, reverse=False):
+        a = Ansi()
+        styles = ''
+        if bold:
+            styles += a.bold()
+        if dim:
+            styles += a.dim()
+        if reverse:
+            styles += a.reverse()
+        sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{styles}{text}{a.reset()}')
 
     def _get_controls_text(self):
-        """生成 Controls 帮助文字"""
         def keys_display(action):
             keys = self.key_config.get(action, [])
             if not keys:
@@ -746,34 +749,21 @@ class TetrisGame:
 
     def draw(self):
         self.stdscr.clear()
-        height, width = self.stdscr.getmaxyx()
+        self.stdscr.refresh()
+        sys.stdout.write(Ansi().hide_cursor())
 
-        # 动态计算最小高度需求
         controls = self._get_controls_text()
 
-        # info_y=1, controls 从 info_y+13 开始 (Next+Hold+Score 占 12 行)
-        # 最后一行在 1 + 13 + len(controls) = 14 + 5 = 19
-        # 加上 board 底部在 1 + 1 + 20 = 22, 所以 min_height = max(22, 19) + 2 = 24
-        min_height_needed = max(BOARD_HEIGHT + 4, 14 + len(controls) + 2)
-        min_width_needed = (BOARD_WIDTH + PREVIEW_WIDTH + 6) * 2 + 4
-
-        if height < min_height_needed or width < min_width_needed:
-            msg = f"Terminal too small! Need {min_width_needed}x{min_height_needed}, got {width}x{height}"
-            self._safe_addstr(0, 0, msg[:width-1])
-            self.stdscr.refresh()
-            return
-
-        border_color = curses.A_BOLD
         border_style = self.style.get('border', 'block')
         border_char = BORDER_STYLES.get(border_style, BORDER_STYLES['block'])
 
         self._safe_addstr(self.disp_y, self.disp_x,
-                           border_char[0] + border_char[1] * 2 * BOARD_WIDTH + border_char[2], border_color)
+                           border_char[0] + border_char[1] * 2 * BOARD_WIDTH + border_char[2], bold=True)
         for y in range(BOARD_HEIGHT):
-            self._safe_addstr(self.disp_y + 1 + y, self.disp_x, border_char[3], border_color)
-            self._safe_addstr(self.disp_y + 1 + y, self.disp_x + 1 + BOARD_WIDTH * 2, border_char[4], border_color)
+            self._safe_addstr(self.disp_y + 1 + y, self.disp_x, border_char[3], bold=True)
+            self._safe_addstr(self.disp_y + 1 + y, self.disp_x + 1 + BOARD_WIDTH * 2, border_char[4], bold=True)
         self._safe_addstr(self.disp_y + 1 + BOARD_HEIGHT, self.disp_x,
-                           border_char[5] + border_char[6] * 2 * BOARD_WIDTH + border_char[7], border_color)
+                           border_char[5] + border_char[6] * 2 * BOARD_WIDTH + border_char[7], bold=True)
 
         for y in range(BOARD_HEIGHT):
             for x in range(BOARD_WIDTH):
@@ -798,42 +788,41 @@ class TetrisGame:
         info_x = self.disp_x + 1 + BOARD_WIDTH * 2 + 4
         info_y = self.disp_y
 
-        # Next piece
-        self._safe_addstr(info_y + 1, info_x, 'Next:', curses.A_BOLD)
+        self._safe_addstr(info_y + 1, info_x, 'Next:', bold=True)
         self._draw_mini_piece(info_y + 3, info_x, self.next_piece_name, SHAPE_COLORS[self.next_piece_name])
 
-        # Hold piece
-        self._safe_addstr(info_y + 6, info_x, 'Hold:', curses.A_BOLD)
+        self._safe_addstr(info_y + 6, info_x, 'Hold:', bold=True)
         if self.held_piece_name:
             self._draw_mini_piece(info_y + 8, info_x, self.held_piece_name, SHAPE_COLORS[self.held_piece_name])
 
         game_info_y = info_y + 10
-        self._safe_addstr(info_y + game_info_y + 0, info_x, f'Score: {self.score}', curses.A_BOLD)
-        self._safe_addstr(info_y + game_info_y + 1, info_x, f'Lines: {self.lines}', curses.A_BOLD)
-        self._safe_addstr(info_y + game_info_y + 2, info_x, f'Level: {self.level}', curses.A_BOLD)
+        self._safe_addstr(game_info_y + 0, info_x, f'Score: {self.score}', bold=True)
+        self._safe_addstr(game_info_y + 1, info_x, f'Lines: {self.lines}', bold=True)
+        self._safe_addstr(game_info_y + 2, info_x, f'Level: {self.level}', bold=True)
         g = self._get_gravity()
-        self._safe_addstr(info_y + game_info_y + 3, info_x, f'Gravity: {g:.4f}', curses.A_DIM)
+        self._safe_addstr(game_info_y + 3, info_x, f'Gravity: {g:.4f}', dim=True)
 
         for i, ctrl in enumerate(controls):
-            self._safe_addstr(info_y + 16 + i, info_x, ctrl, curses.A_DIM)
+            self._safe_addstr(info_y + 16 + i, info_x, ctrl, dim=True)
 
         if self.paused:
             msg = ' P A U S E D '
             my = self.disp_y + 1 + BOARD_HEIGHT // 2
             mx = self.disp_x + 1 + BOARD_WIDTH - len(msg) // 2
-            self._safe_addstr(my, mx, msg, curses.A_BOLD | curses.A_REVERSE)
-            self._safe_addstr(my + 1, mx - 2, 'Press P to resume', curses.A_DIM)
+            self._safe_addstr(my, mx, msg, bold=True, reverse=True)
+            self._safe_addstr(my + 1, mx - 2, 'Press P to resume', dim=True)
 
         if self.game_over:
             msg = 'GAME OVER'
             my = self.disp_y + 1 + BOARD_HEIGHT // 2 - 1
             mx = self.disp_x + 1 + BOARD_WIDTH - len(msg) // 2 + 1
-            self._safe_addstr(my, mx, msg, curses.A_BOLD | curses.A_REVERSE)
-            self._safe_addstr(my + 1, mx - 3, f'Final Score: {self.score}', curses.A_BOLD)
-            self._safe_addstr(my + 2, mx - 4, 'Press R to restart', curses.A_DIM)
-            self._safe_addstr(my + 3, mx - 3, 'Press Q to quit', curses.A_DIM)
+            self._safe_addstr(my, mx, msg, bold=True, reverse=True)
+            self._safe_addstr(my + 1, mx - 3, f'Final Score: {self.score}', bold=True)
+            self._safe_addstr(my + 2, mx - 4, 'Press R to restart', dim=True)
+            self._safe_addstr(my + 3, mx - 3, 'Press Q to quit', dim=True)
 
-        self.stdscr.refresh()
+        sys.stdout.flush()
+
 
     def run(self):
         try:
@@ -852,6 +841,8 @@ class TetrisGame:
                 if sleep_time > 0:
                     time.sleep(sleep_time)
         finally:
+            sys.stdout.write(Ansi().show_cursor())
+            sys.stdout.flush()
             if self.audio:
                 self.audio.stop()
 
@@ -859,21 +850,26 @@ class TetrisGame:
 def main():
     audio = AudioPlayer("./tetris.mp3")
     key_config = load_key_config()
-    def wrapper(stdscr):
-        curses.curs_set(0)
-        stdscr.keypad(True)
-        curses.noecho()
 
-        game = TetrisGame(stdscr, audio, key_config)
-        game.run()
+    stdscr = curses.initscr()
+    curses.curs_set(0)
+    stdscr.keypad(True)
+    curses.noecho()
+    curses.cbreak()
+    stdscr.nodelay(True)
 
     try:
-        curses.wrapper(wrapper)
+        game = TetrisGame(stdscr, audio, key_config)
+        game.run()
     except KeyboardInterrupt:
         pass
     finally:
+        curses.nocbreak()
+        stdscr.keypad(False)
+        curses.echo()
+        curses.endwin()
         audio.stop()
-    print("\n\x1b[41;30;1m Thanks for playing \n Terminal Tetris!   \x1b[0m\n")
+        print("\n\x1b[41;30m Thanks for playing \n Terminal Tetris!   \x1b[0m\n")
 
 
 if __name__ == '__main__':
