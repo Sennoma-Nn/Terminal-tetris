@@ -811,7 +811,7 @@ class TetrisGame:
         if self.held_piece_name:
             self._draw_mini_piece(info_y + 8, info_x, self.held_piece_name, SHAPE_COLORS[self.held_piece_name])
 
-        game_info_y = info_y + 10
+        game_info_y = info_y + 11
         self._safe_addstr(game_info_y + 0, info_x, f'Score: {self.score}', bold=True)
         self._safe_addstr(game_info_y + 1, info_x, f'Lines: {self.lines}', bold=True)
         self._safe_addstr(game_info_y + 2, info_x, f'Level: {self.level}', bold=True)
