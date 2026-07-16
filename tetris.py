@@ -848,9 +848,10 @@ class TetrisGame:
             frame_time = 1.0 / 60
             while not self.quit:
                 frame_start = time.time()
-                self.handle_input()
-                self.update()
-                self.draw()
+                need_redraw = self.handle_input()
+                need_redraw = self.update() or need_redraw
+                if need_redraw:
+                    self.draw()
                 elapsed = time.time() - frame_start
                 sleep_time = frame_time - elapsed
                 if sleep_time > 0:
