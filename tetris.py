@@ -11,10 +11,21 @@ import subprocess
 import copy
 import sys
 
-BOARD_WIDTH = 10
-BOARD_HEIGHT = 20
-PREVIEW_WIDTH = 6
-PREVIEW_HEIGHT = 4
+game_data = {
+    'board_width': 10,
+    'board_height': 20,
+    'preview_width': 6,
+    'preview_height': 4,
+    'lines_per_level': 10,
+    'lock_frames': 30,
+    'max_lock_resets': 15,
+}
+
+DISPLAY_CHARS = {
+    'block': '██',
+    'empty': '  ',
+    'ghost': '▒▒',
+}
 
 KEY_NAME_MAP = {
     'LEFT':         curses.KEY_LEFT,
@@ -198,12 +209,6 @@ SHAPE_COLORS = {name: i + 1 for i, name in enumerate(SHAPE_RGB_COLORS)}
 
 LINE_POINTS = {1: 100, 2: 300, 3: 500, 4: 800}
 
-BLOCK_CHAR = '██'
-EMPTY_CHAR = '  '
-GHOST_CHAR = '▒▒'
-
-LINES_PER_LEVEL = 10
-
 BORDER_STYLES = {
     'block': [
         '▄', '▄', '▄',
@@ -383,10 +388,11 @@ class TetrisGame:
         self.stdscr = stdscr
         self.audio = audio
         self.key_config = key_config
-        self.board_width = BOARD_WIDTH
-        self.board_height = BOARD_HEIGHT
-        self.board = [[0] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)]
-        self.board_colors = [[0] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)]
+        gd = game_data
+        self.board_width = gd['board_width']
+        self.board_height = gd['board_height']
+        self.board = [[0] * gd['board_width'] for _ in range(gd['board_height'])]
+        self.board_colors = [[0] * gd['board_width'] for _ in range(gd['board_height'])]
         self.score = 0
         self.lines = 0
         self.level = 1
@@ -406,10 +412,10 @@ class TetrisGame:
         self._spawn_piece()
 
         self.g_accum = 0.0
-        self.lock_frames = 30
+        self.lock_frames = gd['lock_frames']
         self.lock_counter = None
         self.lock_resets = 0
-        self.max_lock_resets = 15
+        self.max_lock_resets = gd['max_lock_resets']
 
         self.stdscr.nodelay(True)
 
@@ -475,7 +481,7 @@ class TetrisGame:
         if lines_cleared > 0:
             self.lines += lines_cleared
             self.score += LINE_POINTS.get(lines_cleared, lines_cleared * 100) * self.level
-            self.level = self.lines // LINES_PER_LEVEL + 1
+            self.level = self.lines // game_data['lines_per_level'] + 1
 
     def _update_ghost(self):
         piece = self.current_piece
@@ -688,9 +694,9 @@ class TetrisGame:
         r, g, b = self._get_color_by_index(color_index)
         a = Ansi()
         if is_ghost:
-            sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{a.fg(r, g, b)}{a.dim()}{GHOST_CHAR}{a.reset()}')
+            sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{a.fg(r, g, b)}{a.dim()}{DISPLAY_CHARS["ghost"]}{a.reset()}')
         else:
-            sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{a.fg(r, g, b)}{a.bold()}{BLOCK_CHAR}{a.reset()}')
+            sys.stdout.write(f'{a.cursor(y + 1, x + 1)}{a.fg(r, g, b)}{a.bold()}{DISPLAY_CHARS["block"]}{a.reset()}')
 
     def _draw_mini_piece(self, start_y, start_x, shape_name, color_index):
         r, g, b = self._get_shape_rgb(shape_name)
@@ -701,7 +707,7 @@ class TetrisGame:
                 if cell:
                     sy = start_y + dy + 1
                     sx = start_x + dx * 2 + 1
-                    sys.stdout.write(f'{a.cursor(sy, sx)}{a.fg(r, g, b)}{a.bold()}{BLOCK_CHAR}{a.reset()}')
+                    sys.stdout.write(f'{a.cursor(sy, sx)}{a.fg(r, g, b)}{a.bold()}{DISPLAY_CHARS["block"]}{a.reset()}')
 
     def _safe_addstr(self, y, x, text, bold=False, dim=False, reverse=False):
         a = Ansi()
@@ -757,16 +763,18 @@ class TetrisGame:
         border_style = self.style.get('border', 'block')
         border_char = BORDER_STYLES.get(border_style, BORDER_STYLES['block'])
 
+        bw = self.board_width
+        bh = self.board_height
         self._safe_addstr(self.disp_y, self.disp_x,
-                           border_char[0] + border_char[1] * 2 * BOARD_WIDTH + border_char[2], bold=True)
-        for y in range(BOARD_HEIGHT):
+                           border_char[0] + border_char[1] * 2 * bw + border_char[2], bold=True)
+        for y in range(bh):
             self._safe_addstr(self.disp_y + 1 + y, self.disp_x, border_char[3], bold=True)
-            self._safe_addstr(self.disp_y + 1 + y, self.disp_x + 1 + BOARD_WIDTH * 2, border_char[4], bold=True)
-        self._safe_addstr(self.disp_y + 1 + BOARD_HEIGHT, self.disp_x,
-                           border_char[5] + border_char[6] * 2 * BOARD_WIDTH + border_char[7], bold=True)
+            self._safe_addstr(self.disp_y + 1 + y, self.disp_x + 1 + bw * 2, border_char[4], bold=True)
+        self._safe_addstr(self.disp_y + 1 + bh, self.disp_x,
+                           border_char[5] + border_char[6] * 2 * bw + border_char[7], bold=True)
 
-        for y in range(BOARD_HEIGHT):
-            for x in range(BOARD_WIDTH):
+        for y in range(bh):
+            for x in range(bw):
                 if self.board[y][x]:
                     sy, sx = self._screen_pos(y, x)
                     self._draw_block(sy, sx, self.board_colors[y][x])
@@ -775,17 +783,17 @@ class TetrisGame:
             if self._get_gravity() < 20:
                 piece = self.current_piece
                 for x, y in piece.get_positions():
-                    if 0 <= y < BOARD_HEIGHT and 0 <= x < BOARD_WIDTH and not self.board[y][x]:
+                    if 0 <= y < bh and 0 <= x < bw and not self.board[y][x]:
                         sy, sx = self._screen_pos(self.ghost_y + (y - piece.y), x)
                         self._draw_block(sy, sx, piece.color, is_ghost=True)
 
         if self.current_piece and not self.game_over:
             for x, y in self.current_piece.get_positions():
-                if 0 <= y < BOARD_HEIGHT and 0 <= x < self.board_width:
+                if 0 <= y < bh and 0 <= x < self.board_width:
                     sy, sx = self._screen_pos(y, x)
                     self._draw_block(sy, sx, self.current_piece.color)
 
-        info_x = self.disp_x + 1 + BOARD_WIDTH * 2 + 4
+        info_x = self.disp_x + 1 + bw * 2 + 4
         info_y = self.disp_y
 
         self._safe_addstr(info_y + 1, info_x, 'Next:', bold=True)
@@ -807,15 +815,15 @@ class TetrisGame:
 
         if self.paused:
             msg = ' P A U S E D '
-            my = self.disp_y + 1 + BOARD_HEIGHT // 2
-            mx = self.disp_x + 1 + BOARD_WIDTH - len(msg) // 2
+            my = self.disp_y + 1 + bh // 2
+            mx = self.disp_x + 1 + bw - len(msg) // 2
             self._safe_addstr(my, mx, msg, bold=True, reverse=True)
             self._safe_addstr(my + 1, mx - 2, 'Press P to resume', dim=True)
 
         if self.game_over:
             msg = 'GAME OVER'
-            my = self.disp_y + 1 + BOARD_HEIGHT // 2 - 1
-            mx = self.disp_x + 1 + BOARD_WIDTH - len(msg) // 2 + 1
+            my = self.disp_y + 1 + bh // 2 - 1
+            mx = self.disp_x + 1 + bw - len(msg) // 2 + 1
             self._safe_addstr(my, mx, msg, bold=True, reverse=True)
             self._safe_addstr(my + 1, mx - 3, f'Final Score: {self.score}', bold=True)
             self._safe_addstr(my + 2, mx - 4, 'Press R to restart', dim=True)
