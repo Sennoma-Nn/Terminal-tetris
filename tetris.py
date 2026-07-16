@@ -17,8 +17,6 @@ game_data = {
     'preview_width': 6,
     'preview_height': 4,
     'lines_per_level': 10,
-    'lock_frames': 30,
-    'max_lock_resets': 15,
 }
 
 DISPLAY_CHARS = {
@@ -412,10 +410,8 @@ class TetrisGame:
         self._spawn_piece()
 
         self.g_accum = 0.0
-        self.lock_frames = gd['lock_frames']
         self.lock_counter = None
         self.lock_resets = 0
-        self.max_lock_resets = gd['max_lock_resets']
 
         self.stdscr.nodelay(True)
 
@@ -497,7 +493,7 @@ class TetrisGame:
             self.current_piece.x += dx
             self.current_piece.y += dy
             self._update_ghost()
-            if self.lock_counter is not None and self.lock_resets < self.max_lock_resets:
+            if self.lock_counter is not None and self.lock_resets < self._get_max_lock_resets():
                 self.lock_counter = 0
                 self.lock_resets += 1
             return True
@@ -528,7 +524,7 @@ class TetrisGame:
                 piece.shape = new_shape
                 piece.rotation = {'0': 0, 'R': 1, '2': 2, 'L': 3}[to_rot_name]
                 self._update_ghost()
-                if self.lock_counter is not None and self.lock_resets < self.max_lock_resets:
+                if self.lock_counter is not None and self.lock_resets < self._get_max_lock_resets():
                     self.lock_counter = 0
                     self.lock_resets += 1
                 return True
@@ -541,7 +537,7 @@ class TetrisGame:
                 piece.x += dx
                 piece.y += -dy
                 self._update_ghost()
-                if self.lock_counter is not None and self.lock_resets < self.max_lock_resets:
+                if self.lock_counter is not None and self.lock_resets < self._get_max_lock_resets():
                     self.lock_counter = 0
                     self.lock_resets += 1
                 return True
@@ -578,6 +574,18 @@ class TetrisGame:
 
         self.can_hold = False
         return True
+
+    def _get_lock_frames(self):
+        if self.level > 20:
+            reduction = (self.level - 20) * 2
+            return max(6, 30 - reduction)
+        return 30
+
+    def _get_max_lock_resets(self):
+        if self.level > 20:
+            reduction = self.level - 20
+            return max(0, 15 - reduction)
+        return 15
 
     def _get_gravity(self):
         if self.level >= 19:
@@ -659,7 +667,7 @@ class TetrisGame:
                 self.lock_counter = 0
             else:
                 self.lock_counter += 1
-                if self.lock_counter >= self.lock_frames:
+                if self.lock_counter >= self._get_lock_frames():
                     self._lock_piece()
                     redraw = True
         else:
@@ -807,8 +815,8 @@ class TetrisGame:
         self._safe_addstr(game_info_y + 0, info_x, f'Score: {self.score}', bold=True)
         self._safe_addstr(game_info_y + 1, info_x, f'Lines: {self.lines}', bold=True)
         self._safe_addstr(game_info_y + 2, info_x, f'Level: {self.level}', bold=True)
-        g = self._get_gravity()
-        self._safe_addstr(game_info_y + 3, info_x, f'Gravity: {g:.4f}', dim=True)
+        remaining = self._get_max_lock_resets() - self.lock_resets
+        self._safe_addstr(game_info_y + 3, info_x, f'Lock Resets: {'◆' * remaining}', dim=True)
 
         for i, ctrl in enumerate(controls):
             self._safe_addstr(info_y + 16 + i, info_x, ctrl, dim=True)
